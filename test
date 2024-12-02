@@ -1,0 +1,68 @@
+app.post("/callback", async (req, res) => {
+    console.log("callback:: ", req.body);
+
+    const { orderId, resultCode } = req.body;
+
+    try {
+        const [order] = await db.query(`
+            SELECT trang_thai_TT FROM dat_homestay WHERE order_id = ?
+        `, [orderId]);
+
+        if (!order || order.trang_thai_TT === 'đã hủy') {
+            console.log(`Không thể cập nhật, đơn hàng đã bị hủy hoặc không tồn tại: ${orderId}`);
+            return res.status(400).json({ message: "Đơn hàng đã bị hủy hoặc không hợp lệ." });
+        }
+
+        if (resultCode === 0) {
+            // Thanh toán thành công
+            await db.query(`
+                UPDATE dat_homestay 
+                SET trang_thai_TT = 'đã thanh toán' 
+                WHERE order_id = ?
+            `, [orderId]);
+
+            console.log(`Đơn hàng ${orderId} đã thanh toán thành công.`);
+            return res.status(200).json({ message: "Thanh toán thành công." });
+        } else {
+            // Thanh toán thất bại
+            await db.query(`
+                UPDATE dat_homestay 
+                SET trang_thai_TT = 'Thanh toán thất bại' 
+                WHERE order_id = ?
+            `, [orderId]);
+
+            console.log(`Đơn hàng ${orderId} thanh toán thất bại.`);
+            return res.status(200).json({ message: "Thanh toán thất bại." });
+        }
+    } catch (error) {
+        console.error("Lỗi khi xử lý callback từ MoMo:", error.message);
+        return res.status(500).json({ message: "Lỗi server." });
+    }
+});
+
+
+
+
+///////////////////
+app.get('/api/order-status/:orderId', async (req, res) => {
+    const { orderId } = req.params;
+
+    try {
+        const [order] = await db.query(`
+            SELECT trang_thai_TT FROM dat_homestay WHERE id = ?
+        `, [orderId]);
+
+        if (!order) {
+            return res.status(404).json({ message: "Đơn hàng không tồn tại." });
+        }
+
+        if (order.trang_thai_TT === 'đã hủy') {
+            return res.status(400).json({ message: "Đơn hàng đã bị hủy. Vui lòng đặt lại." });
+        }
+
+        return res.status(200).json({ status: order.trang_thai_TT });
+    } catch (error) {
+        console.error("Lỗi khi kiểm tra trạng thái đơn hàng:", error.message);
+        return res.status(500).json({ message: "Lỗi server." });
+    }
+});
